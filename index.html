@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>肯德基大亨 3D - 店铺经营游戏</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; background:#FFF3E0; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  /* 顶部 HUD */
+  #hud { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; padding:calc(10px + env(safe-area-inset-top)) 12px 0; pointer-events:none; z-index:10; }
+  #hud .left { display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { background:rgba(255,255,255,.94); border-radius:999px; padding:8px 14px; font-weight:800; color:#C4001F; box-shadow:0 2px 8px rgba(0,0,0,.15); display:flex; align-items:center; gap:6px; font-size:clamp(14px,3.6vw,17px); pointer-events:auto; }
+  #xpbar { width:clamp(60px,16vw,110px); height:8px; background:#eee; border-radius:99px; overflow:hidden; }
+  #xpfill { height:100%; width:0%; background:linear-gradient(90deg,#E4002B,#FF6F3C); border-radius:99px; transition:width .3s; }
+  .iconbtn { pointer-events:auto; width:44px; height:44px; border:none; border-radius:50%; background:rgba(255,255,255,.94); box-shadow:0 2px 8px rgba(0,0,0,.15); font-size:20px; cursor:pointer; margin-left:8px; }
+  .iconbtn:active { transform:scale(.92); }
+
+  /* 提示 toast */
+  #toast { position:fixed; top:calc(70px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%) translateY(-8px); background:rgba(30,30,30,.88); color:#fff; padding:10px 20px; border-radius:999px; font-size:clamp(13px,3.4vw,15px); font-weight:600; opacity:0; transition:all .25s; pointer-events:none; z-index:30; max-width:88vw; text-align:center; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* 底部操作栏 */
+  #bottombar { position:fixed; bottom:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-end; padding:0 12px calc(12px + env(safe-area-inset-bottom)); pointer-events:none; z-index:10; gap:8px; }
+  #trayBox { pointer-events:auto; background:rgba(255,255,255,.94); border-radius:16px; padding:8px 12px; box-shadow:0 2px 10px rgba(0,0,0,.15); min-width:110px; max-width:46vw; }
+  #trayBox .lbl { font-size:12px; color:#999; font-weight:700; display:block; }
+  #tray { display:flex; gap:4px; margin-top:2px; min-height:30px; align-items:center; flex-wrap:wrap; }
+  #tray .empty { color:#bbb; font-size:13px; }
+  #tray .tchip { border:none; background:#FFF0F0; border-radius:10px; font-size:20px; padding:3px 8px; cursor:pointer; }
+  #tray .tchip:active { transform:scale(.9); }
+  .btns { display:flex; gap:8px; pointer-events:auto; }
+  .btn { border:none; border-radius:14px; background:#E4002B; color:#fff; font-size:clamp(14px,3.8vw,16px); font-weight:800; padding:12px 18px; cursor:pointer; box-shadow:0 3px 0 #A50020, 0 4px 10px rgba(0,0,0,.2); font-family:inherit; }
+  .btn:active { transform:translateY(2px); box-shadow:0 1px 0 #A50020; }
+  .btn.sm { padding:8px 14px; font-size:14px; border-radius:10px; }
+  .btn.ghost { background:#f0f0f0; color:#666; box-shadow:0 3px 0 #ccc; margin-top:10px; }
+  .btn:disabled { background:#ccc; box-shadow:0 3px 0 #aaa; cursor:not-allowed; }
+
+  /* 弹窗 */
+  #modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:20; padding:16px; }
+  #modal.show { display:flex; }
+  .card { background:#fff; border-radius:20px; padding:22px 20px; width:min(92vw,430px); max-height:82vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.3); }
+  .card h2 { color:#C4001F; font-size:20px; margin-bottom:12px; }
+  .card .money { font-weight:800; color:#C4001F; margin-bottom:8px; }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px dashed #f0e0e0; gap:8px; font-size:15px; }
+  .row small { color:#999; font-weight:400; }
+  .row.lock { color:#bbb; justify-content:flex-start; gap:6px; }
+  .row .max { color:#4CAF50; font-weight:700; }
+  .card .btn { width:100%; margin-top:12px; }
+  .card .btn.sm { width:auto; margin-top:0; }
+  .row .btn + .btn { margin-left:6px; margin-top:0; }
+  ol.help { padding-left:20px; font-size:14.5px; line-height:1.9; color:#444; }
+  #loadFail { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:#FFF3E0; color:#C4001F; font-weight:700; z-index:99; text-align:center; padding:20px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div class="left">
+    <div class="chip">💰 ¥<span id="money">100</span></div>
+    <div class="chip">Lv.<span id="lvl">1</span><div id="xpbar"><div id="xpfill"></div></div></div>
+  </div>
+  <div class="right">
+    <button id="soundBtn" class="iconbtn" title="声音开关">🔊</button>
+    <button id="helpBtn" class="iconbtn" title="玩法说明">❓</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="bottombar">
+  <div id="trayBox"><span class="lbl">托盘（点击食物可丢弃）</span><span id="tray"></span></div>
+  <div class="btns">
+    <button id="buyBtn" class="btn">🛒 进货</button>
+    <button id="upgBtn" class="btn">⬆️ 升级</button>
+  </div>
+</div>
+
+<div id="modal"></div>
+<div id="loadFail">😢 3D 资源加载失败<br>请检查网络后刷新重试</div>
+
+<script>
+  // 加载失败兜底提示
+  window.__gameOK = false;
+  setTimeout(function(){ if(!window.__gameOK) document.getElementById('loadFail').style.display='flex'; }, 20000);
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ==================== 数据配置 ==================== */
+const RECIPES = {
+  burger: { name:'汉堡', icon:'🍔', cost:5,  price:15, time:4, unlock:1 },
+  fries:  { name:'薯条', icon:'🍟', cost:3,  price:10, time:3, unlock:2 },
+  cola:   { name:'可乐', icon:'🥤', cost:2,  price:8,  time:2, unlock:3 },
+  pizza:  { name:'披萨', icon:'🍕', cost:12, price:30, time:6, unlock:5 },
+};
+const SAVE_KEY = 'kfc3d_save_v1';
+const TRAY_MAX = 3;
+const PATIENCE_MAX = 45;
+
+let state = {
+  money:100, xp:0, level:1,
+  stock:{ burger:0, fries:0, cola:0, pizza:0 },
+  tables:4, kitchen:1, muted:false
+};
+let tray = [];            // 店员托盘里的食物 key 数组
+let hasSave = false;
+
+const xpNeed = l => 50 * l;                       // 当前级升到下一级所需经验
+const cookDur  = r => r.time * (1 - 0.12 * (state.kitchen - 1));
+
+/* ==================== 基础场景 ==================== */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xFCEBD5);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(11, 12, 14);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = 1.42;
+controls.minDistance = 6;
+controls.maxDistance = 38;
+controls.target.set(0, 0.5, 0);
+
+scene.add(new THREE.HemisphereLight(0xFFF8EC, 0xD9C7A7, 1.05));
+const sun = new THREE.DirectionalLight(0xFFFFFF, 1.15);
+sun.position.set(12, 20, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
+sun.shadow.camera.top = 18;   sun.shadow.camera.bottom = -18;
+sun.shadow.camera.far = 60;
+scene.add(sun);
+
+const M = c => new THREE.MeshStandardMaterial({ color:c, roughness:0.8 });
+const billboards = [];   // 需要始终面向相机的小组件（进度条）
+
+/* ==================== 工具函数 ==================== */
+function roundRectPath(x, px, py, w, h, r){
+  x.beginPath();
+  x.moveTo(px+r, py);
+  x.arcTo(px+w, py, px+w, py+h, r);
+  x.arcTo(px+w, py+h, px, py+h, r);
+  x.arcTo(px, py+h, px, py, r);
+  x.arcTo(px, py, px+w, py, r);
+  x.closePath();
+}
+
+// 订单气泡（canvas sprite，可改文字）
+function makeBubble(text){
+  const c = document.createElement('canvas'); c.width = 160; c.height = 160;
+  const draw = t => {
+    const x = c.getContext('2d');
+    x.clearRect(0,0,160,160);
+    x.fillStyle = '#fff'; x.strokeStyle = '#ddd'; x.lineWidth = 4;
+    roundRectPath(x, 10, 10, 140, 108, 26); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(62,116); x.lineTo(80,148); x.lineTo(98,116); x.closePath();
+    x.fillStyle = '#fff'; x.fill();
+    x.font = '60px "Segoe UI Emoji","Apple Color Emoji",serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(t, 80, 66);
+  };
+  draw(text);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c), transparent:true, depthWrite:false }));
+  s.scale.set(1.15, 1.15, 1);
+  s.userData.setText = t => { draw(t); s.material.map.needsUpdate = true; };
+  return s;
+}
+
+// 飘字（+¥xx）
+function makePopup(text, color='#FFD54F'){
+  const c = document.createElement('canvas'); c.width = 256; c.height = 96;
+  const x = c.getContext('2d');
+  x.font = 'bold 54px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.lineWidth = 9; x.strokeStyle = 'rgba(0,0,0,.5)'; x.strokeText(text, 128, 50);
+  x.fillStyle = color; x.fillText(text, 128, 50);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c), transparent:true, depthWrite:false }));
+  s.scale.set(2.3, 0.86, 1);
+  return s;
+}
+
+// 细进度条（左起填充，面向相机）
+function makeBar(w=1.1, h=0.12){
+  const g = new THREE.Group();
+  const bg = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ color:0x1d1d1d, transparent:true, opacity:0.5, depthWrite:false }));
+  const fgGeo = new THREE.PlaneGeometry(w, h); fgGeo.translate(w/2, 0, 0);
+  const fg = new THREE.Mesh(fgGeo, new THREE.MeshBasicMaterial({ color:0x4CAF50, depthWrite:false }));
+  fg.position.set(-w/2, 0, 0.002);
+  g.add(bg, fg);
+  g.userData.set = (p, hue) => {
+    fg.scale.x = Math.max(0.0001, Math.min(1, p));
+    if (hue !== undefined) fg.material.color.setHSL(hue, 0.85, 0.5);
+  };
+  return g;
+}
+
+/* ---- 音效（WebAudio 简易合成） ---- */
+let AC = null;
+function beep(f, d=0.12, type='sine', v=0.14){
+  if (state.muted) return;
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(v, AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + d);
+    o.connect(g).connect(AC.destination);
+    o.start(); o.stop(AC.currentTime + d);
+  } catch(e){}
+}
+function sfx(n){
+  if (n === 'coin'){ beep(880,.08,'square',.07); setTimeout(()=>beep(1320,.13,'square',.07), 70); }
+  else if (n === 'ding'){ beep(740,.2,'triangle',.16); }
+  else if (n === 'pop'){ beep(520,.06,'sine',.12); }
+  else if (n === 'bad'){ beep(180,.22,'sawtooth',.1); }
+}
+
+/* ---- DOM 提示 ---- */
+let toastTimer = null;
+function toast(msg, ms=1800){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+/* ==================== 店铺场景搭建 ==================== */
+// 大地
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), M(0xE7DAC0));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.16; ground.receiveShadow = true;
+scene.add(ground);
+
+// 店内地板 26 x 18
+const floorMesh = new THREE.Mesh(new THREE.BoxGeometry(26, 0.3, 18), M(0xF6E9CF));
+floorMesh.position.y = -0.15; floorMesh.receiveShadow = true;
+floorMesh.userData = { type:'floor' };
+scene.add(floorMesh);
+
+// 门口红地毯
+const runner = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.04, 2.3), M(0xC4001F));
+runner.position.set(9.6, 0.021, 7); runner.receiveShadow = true;
+scene.add(runner);
+
+// 墙体（下半红、上半白）
+function makeWall(w, h, x, y, z, rotY=0){
+  const g = new THREE.Group();
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, h), M(0xD5001F));
+  lower.position.y = 0.55;
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(w, 2.9, h), M(0xFFFFFF));
+  upper.position.y = 2.55;
+  lower.castShadow = upper.castShadow = true;
+  lower.receiveShadow = upper.receiveShadow = true;
+  g.add(lower, upper);
+  g.position.set(x, y, z); g.rotation.y = rotY;
+  scene.add(g);
+  return g;
+}
+makeWall(26, 0.4, 0, 0, -9);            // 后墙
+makeWall(18, 0.4, -13, 0, 0, Math.PI/2); // 左墙
+// 右墙留门洞（z 6~8 为门）
+makeWall(15, 0.4, 13, 0, -1.5, Math.PI/2);
+makeWall(1, 0.4, 13, 0, 8.5, Math.PI/2);
+// 门框
+const doorTop = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 2.4), M(0xC4001F));
+doorTop.position.set(13, 3.75, 7); doorTop.castShadow = true;
+scene.add(doorTop);
+
+// 招牌
+(function(){
+  const c = document.createElement('canvas'); c.width = 640; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#E4002B'; x.fillRect(0,0,640,128);
+  x.fillStyle = '#fff'; x.font = 'bold 72px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('KFC 肯德基', 320, 66);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 1.44),
+    new THREE.MeshBasicMaterial({ map:new THREE.CanvasTexture(c) }));
+  p.position.set(0, 3.1, -8.78);
+  scene.add(p);
+})();
+
+// 菜单海报
+function makePoster(icon, label, x){
+  const c = document.createElement('canvas'); c.width = 256; c.height = 320;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,256,320);
+  ctx.strokeStyle = '#E4002B'; ctx.lineWidth = 10; ctx.strokeRect(6,6,244,308);
+  ctx.font = '120px "Segoe UI Emoji","Apple Color Emoji",serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(icon, 128, 150);
+  ctx.font = 'bold 38px Arial'; ctx.fillStyle = '#C4001F';
+  ctx.fillText(label, 128, 272);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.9),
+    new THREE.MeshBasicMaterial({ map:new THREE.CanvasTexture(c) }));
+  p.position.set(x, 2.05, -8.78);
+  scene.add(p);
+}
+makePoster('🍔', '招牌汉堡', -5.2);
+makePoster('🍟', '现炸薯条', 5.2);
+makePoster('🥤', '冰爽可乐', 8.2);
+
+/* ---- 厨房灶台 x3 ---- */
+const stations = [];
+function makeStation(x, idx){
+  const g = new THREE.Group(); g.position.set(x, 0, -7);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.92, 1), M(0xFAFAFA));
+  base.position.y = 0.46;
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.08, 1.1),
+    new THREE.MeshStandardMaterial({ color:0x90A4AE, roughness:0.5 }));
+  top.position.y = 0.96;
+  const stove = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.04, 0.6), M(0x37474F));
+  stove.position.set(-0.2, 1.02, 0);
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.18, 14), M(0xB0BEC5));
+  pot.position.set(-0.2, 1.13, 0);
+  [base, top, stove, pot].forEach(o => { o.castShadow = true; o.receiveShadow = true; });
+  g.add(base, top, stove, pot);
+  const bar = makeBar(1.2, 0.12); bar.position.y = 1.75; bar.visible = false;
+  g.add(bar); billboards.push(bar);
+  g.userData = { type:'station', index:idx };
+  scene.add(g);
+  const st = { group:g, top, bar, state:'idle', key:null, t:0, dur:0, food:null,
+               stand:new THREE.Vector3(x, 0, -5.7) };
+  stations.push(st);
+  return st;
+}
+[-5, 0, 5].forEach((x, i) => makeStation(x, i));
+
+function setStationColor(st, c, glow=false){
+  st.top.material.color.setHex(c);
+  st.top.material.emissive.setHex(glow ? c : 0x000000);
+  st.top.material.emissiveIntensity = 0.45;
+}
+
+/* ---- 冰箱（食材进货） ---- */
+const fridgeG = new THREE.Group();
+fridgeG.position.set(-11.9, 0, -3);
+{
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.3, 1.2), M(0xF5F5F5));
+  body.position.y = 1.15;
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.3, 1.22), M(0x2196F3));
+  stripe.position.y = 1.9;
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 0.08), M(0x90A4AE));
+  handle.position.set(0.66, 1.2, 0.35);
+  [body, stripe, handle].forEach(o => o.castShadow = true);
+  fridgeG.add(body, stripe, handle);
+  fridgeG.userData = { type:'fridge' };
+  scene.add(fridgeG);
+}
+const fridgeStand = new THREE.Vector3(-10.2, 0, -3);
+
+/* ---- 餐桌（初始4张，可扩建到8张） ---- */
+const tablesArr = [];
+const TABLE_POS = [];
+[-7.5, -2.5, 2.5, 7.5].forEach(x => TABLE_POS.push([x, -1.5]));   // 第一排
+[-7.5, -2.5, 2.5, 7.5].forEach(x => TABLE_POS.push([x, 3.5]));    // 第二排
+
+function makeChair(){
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), M(0xD5001F));
+  seat.position.y = 0.45;
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.08), M(0xD5001F));
+  back.position.set(0, 0.78, 0.22);
+  const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.06), M(0x8B0000));
+  leg1.position.set(-0.2, 0.22, -0.2);
+  const leg2 = leg1.clone(); leg2.position.set(0.2, 0.22, -0.2);
+  const leg3 = leg1.clone(); leg3.position.set(-0.2, 0.22, 0.2);
+  const leg4 = leg1.clone(); leg4.position.set(0.2, 0.22, 0.2);
+  [seat, back, leg1, leg2, leg3, leg4].forEach(o => o.castShadow = true);
+  g.add(seat, back, leg1, leg2, leg3, leg4);
+  return g;
+}
+
+TABLE_POS.forEach(([x, z], i) => {
+  const g = new THREE.Group(); g.position.set(x, 0, z);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.78, 0.07, 20), M(0xFFFFFF));
+  top.position.y = 0.74;
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.72, 10), M(0xD5001F));
+  leg.position.y = 0.37;
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 14), M(0x8B0000));
+  base.position.y = 0.025;
+  [top, leg, base].forEach(o => { o.castShadow = true; o.receiveShadow = true; });
+  const chair = makeChair(); chair.position.set(0, 0, 1.05); chair.rotation.y = Math.PI;
+  const chair2 = makeChair(); chair2.position.set(0, 0, -1.05);
+  g.add(top, leg, base, chair, chair2);
+  g.userData = { type:'table', index:i };
+  scene.add(g);
+  tablesArr.push({
+    group:g, active:false, customer:null,
+    pos:new THREE.Vector3(x, 0, z),
+    seat:new THREE.Vector3(x, 0, z + 1.05),
+    stand:new THREE.Vector3(x, 0, z + 1.9),
+  });
+});
+function applyTables(){
+  tablesArr.forEach((t, i) => {
+    t.active = i < state.tables;
+    t.group.visible = t.active;
+  });
+}
+
+/* ---- 装饰绿植 ---- */
+function makePlant(x, z){
+  const g = new THREE.Group(); g.position.set(x, 0, z);
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.26, 0.4, 12), M(0x8D6E63));
+  pot.position.y = 0.2;
+  const leaf1 = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), M(0x66BB6A));
+  leaf1.position.y = 0.75;
+  const leaf2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), M(0x81C784));
+  leaf2.position.set(0.2, 1.05, 0.1);
+  [pot, leaf1, leaf2].forEach(o => o.castShadow = true);
+  g.add(pot, leaf1, leaf2);
+  scene.add(g);
+}
+makePlant(-11.5, 7.5);
+makePlant(11.5, -7.5);
+
+/* ==================== 食物模型 ==================== */
+function makeFood(key){
+  const g = new THREE.Group();
+  if (key === 'burger'){
+    const b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.08, 16), M(0xE8A33D)); b1.position.y = 0.04;
+    const patty = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 16), M(0x6B4226)); patty.position.y = 0.11;
+    const lettuce = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.03, 16), M(0x7CB342)); lettuce.position.y = 0.155;
+    const b2 = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12, 0, Math.PI*2, 0, Math.PI/2), M(0xE8A33D));
+    b2.position.y = 0.17; b2.scale.y = 0.72;
+    g.add(b1, patty, lettuce, b2);
+  } else if (key === 'fries'){
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.2), M(0xE4002B)); box.position.y = 0.13;
+    g.add(box);
+    for (let i = 0; i < 5; i++){
+      const f = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3, 0.05), M(0xF5C542));
+      f.position.set(-0.12 + i*0.06, 0.34, (i%2)*0.06 - 0.03);
+      f.rotation.z = (Math.random() - 0.5) * 0.2;
+      g.add(f);
+    }
+  } else if (key === 'cola'){
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.3, 14), M(0xE4002B)); cup.position.y = 0.15;
+    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.03, 14), M(0xFFFFFF)); lid.position.y = 0.31;
+    const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.2, 6), M(0xFFFFFF));
+    straw.position.set(0.04, 0.4, 0); straw.rotation.z = 0.3;
+    g.add(cup, lid, straw);
+  } else if (key === 'pizza'){
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 18), M(0xE8C07D)); base.position.y = 0.025;
+    const cheese = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.02, 18), M(0xF5C542)); cheese.position.y = 0.055;
+    g.add(base, cheese);
+    for (let i = 0; i < 4; i++){
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 10), M(0xC62828));
+      const a = i * Math.PI/2 + 0.4;
+      p.position.set(Math.cos(a)*0.15, 0.07, Math.sin(a)*0.15);
+      g.add(p);
+    }
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+/* ==================== 人物模型 ==================== */
+function makePerson(opt = {}){
+  const { shirt=0xE4002B, skin=0xFFCF9E, cap=null, apron=false, pants=0x3A3A4A } = opt;
+  const g = new THREE.Group();
+  const upper = new THREE.Group(); g.add(upper);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.62, 12), M(shirt));
+  body.position.y = 0.83; upper.add(body);
+  if (apron){
+    const ap = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.44, 0.04), M(0xFFFFFF));
+    ap.position.set(0, 0.8, 0.27); upper.add(ap);
+  }
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), M(skin));
+  head.position.y = 1.38; upper.add(head);
+  const eyeM = new THREE.MeshBasicMaterial({ color:0x222222 });
+  const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeM);
+  e1.position.set(-0.09, 1.42, 0.23);
+  const e2 = e1.clone(); e2.position.x = 0.09;
+  upper.add(e1, e2);
+  if (cap){
+    const c1 = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.14, 14), M(cap));
+    c1.position.y = 1.58;
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.22), M(cap));
+    brim.position.set(0, 1.53, 0.3);
+    upper.add(c1, brim);
+  }
+  const armGeo = new THREE.BoxGeometry(0.12, 0.5, 0.14);
+  const armL = new THREE.Group(); armL.position.set(-0.34, 1.08, 0);
+  const aL = new THREE.Mesh(armGeo, M(shirt)); aL.position.y = -0.22; armL.add(aL);
+  const armR = armL.clone(); armR.position.x = 0.34;
+  upper.add(armL, armR);
+  const legGeo = new THREE.BoxGeometry(0.16, 0.52, 0.18);
+  const legL = new THREE.Group(); legL.position.set(-0.12, 0.52, 0);
+  const lL = new THREE.Mesh(legGeo, M(pants)); lL.position.y = -0.26; legL.add(lL);
+  const legR = legL.clone(); legR.position.x = 0.12;
+  g.add(legL, legR);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return {
+    group:g, upper, armL, armR, legL, legR,
+    setSit(s){ legL.visible = legR.visible = !s; upper.position.y = s ? -0.34 : 0; },
+    animate(t, moving){
+      const s = moving ? Math.sin(t * 10) : 0;
+      legL.rotation.x = s * 0.6;  legR.rotation.x = -s * 0.6;
+      armL.rotation.x = -s * 0.5; armR.rotation.x = s * 0.5;
+    }
+  };
+}
+
+// 店员
+const clerk = { p:makePerson({ shirt:0xE4002B, cap:0xE4002B, apron:true }),
+                target:null, action:null, moving:false };
+clerk.p.group.position.set(0, 0, 1.5);
+scene.add(clerk.p.group);
+
+// 托盘
+const trayG = new THREE.Group();
+trayG.position.set(0, 1.04, 0.44);
+const trayBase = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.04, 0.36), M(0xFFFFFF));
+trayBase.castShadow = true;
+trayG.add(trayBase);
+clerk.p.group.add(trayG);
+const SLOT_X = [-0.22, 0, 0.22];
+
+function refreshTray(){
+  for (let i = trayG.children.length - 1; i > 0; i--) trayG.remove(trayG.children[i]);
+  tray.forEach((k, i) => {
+    const f = makeFood(k);
+    f.scale.setScalar(0.75);
+    f.position.set(SLOT_X[i], 0.03, 0);
+    trayG.add(f);
+  });
+  renderTrayChips();
+}
+
+/* ---- 地面点击指示圈 ---- */
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.42, 28),
+  new THREE.MeshBasicMaterial({ color:0xE4002B, transparent:true, side:THREE.DoubleSide, depthWrite:false }));
+ring.rotation.x = -Math.PI/2; ring.visible = false;
+scene.add(ring);
+let ringT = 0;
+
+/* ==================== 顾客系统 ==================== */
+const customers = [];
+const DOOR_OUT = new THREE.Vector3(15.5, 0, 7);
+const DOOR_IN  = new THREE.Vector3(11.5, 0, 7);
+const SHIRTS = [0x2196F3, 0x9C27B0, 0x4CAF50, 0xFF9800, 0x607D8B, 0x795548, 0x00BCD4];
+
+function spawnCustomer(){
+  const table = tablesArr.find(t => t.active && !t.customer);
+  if (!table) return;
+  const p = makePerson({ shirt:SHIRTS[Math.floor(Math.random()*SHIRTS.length)] });
+  p.group.position.copy(DOOR_OUT);
+  scene.add(p.group);
+  const unlocked = Object.keys(RECIPES).filter(k => RECIPES[k].unlock <= state.level);
+  const order = unlocked[Math.floor(Math.random()*unlocked.length)];
+  const bubble = makeBubble(RECIPES[order].icon);
+  bubble.position.y = 2.2; bubble.visible = false;
+  p.group.add(bubble);
+  const bar = makeBar(1.0, 0.1); bar.visible = false;
+  scene.add(bar); billboards.push(bar);
+  const c = { p, table, order, state:'walkIn', patience:PATIENCE_MAX,
+              bubble, bar, eatT:0, leaveT:0, wp:0 };
+  table.customer = c;
+  customers.push(c);
+}
+
+function cleanupCustomer(c){
+  scene.remove(c.p.group);
+  scene.remove(c.bar);
+  const bi = billboards.indexOf(c.bar);
+  if (bi >= 0) billboards.splice(bi, 1);
+  if (c.table && c.table.customer === c) c.table.customer = null;
+  const i = customers.indexOf(c);
+  if (i >= 0) customers.splice(i, 1);
+}
+
+function stepMove(obj, target, speed, dt){
+  const dx = target.x - obj.position.x, dz = target.z - obj.position.z;
+  const d = Math.hypot(dx, dz);
+  if (d < 0.12) return true;
+  const s = Math.min(d, speed * dt);
+  obj.position.x += dx/d * s;
+  obj.position.z += dz/d * s;
+  obj.rotation.y = Math.atan2(dx, dz);
+  return d - s < 0.12;
+}
+
+function updateCustomer(c, dt, tNow){
+  const g = c.p.group;
+  if (c.state === 'walkIn'){
+    const target = c.wp === 0 ? DOOR_IN : c.table.seat;
+    if (stepMove(g, target, 2.8, dt)){
+      if (c.wp === 0){ c.wp = 1; }
+      else {
+        // 入座点餐
+        c.p.setSit(true);
+        g.position.copy(c.table.seat);
+        g.rotation.y = Math.PI;   // 面向桌子
+        c.state = 'wait';
+        c.bubble.visible = true;
+        c.bar.visible = true;
+        sfx('pop');
+      }
+    }
+    c.p.animate(tNow, true);
+  }
+  else if (c.state === 'wait'){
+    c.patience -= dt;
+    const p = Math.max(0, c.patience / PATIENCE_MAX);
+    c.bar.userData.set(p, 0.33 * p);
+    if (c.patience <= 0){
+      c.state = 'angry';
+      c.leaveT = 1.0;
+      c.bubble.userData.setText('😠');
+      c.bar.visible = false;
+      toast('😠 有顾客等太久，生气地离开了…');
+      sfx('bad');
+    }
+    c.p.animate(tNow, false);
+  }
+  else if (c.state === 'angry'){
+    c.leaveT -= dt;
+    if (c.leaveT <= 0){ c.state = 'leave'; c.wp = 0; c.bubble.visible = false; c.p.setSit(false); }
+  }
+  else if (c.state === 'eat'){
+    c.eatT -= dt;
+    c.p.animate(tNow, false);
+    if (c.eatT <= 0){
+      const r = RECIPES[c.order];
+      const tip = (c.patience / PATIENCE_MAX) > 0.5 ? Math.round(r.price * 0.2) : 0;
+      const gain = r.price + tip;
+      state.money += gain;
+      addXp(r.price);
+      const pop = makePopup(`+¥${gain}`);
+      pop.position.set(c.table.pos.x, 2.2, c.table.pos.z);
+      scene.add(pop);
+      popups.push({ sprite:pop, life:1.3 });
+      sfx('coin');
+      updateHUD();
+      save();
+      c.state = 'leave'; c.wp = 0; c.p.setSit(false);
+    }
+  }
+  else if (c.state === 'leave'){
+    const target = c.wp === 0 ? DOOR_IN : DOOR_OUT;
+    if (stepMove(g, target, 3.2, dt)){
+      if (c.wp === 0) c.wp = 1;
+      else { cleanupCustomer(c); return; }
+    }
+    c.p.animate(tNow, true);
+  }
+  // 耐心条跟随头顶
+  if (c.bar.visible) c.bar.position.set(g.position.x, 1.95, g.position.z);
+}
+
+/* ==================== 等级/经验 ==================== */
+function addXp(n){
+  state.xp += n;
+  let need = xpNeed(state.level);
+  while (state.xp >= need){
+    state.xp -= need;
+    state.level++;
+    const un = Object.values(RECIPES).filter(r => r.unlock === state.level)
+                 .map(r => r.icon + r.name);
+    toast(`🎉 升到 Lv.${state.level}！${un.length ? '解锁新食谱：' + un.join('、') : ''}`, 2800);
+    sfx('coin');
+    need = xpNeed(state.level);
+  }
+}
+
+/* ==================== 交互逻辑 ==================== */
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let downX = 0, downY = 0;
+
+function getRoots(){
+  const r = [floorMesh, fridgeG];
+  stations.forEach(s => r.push(s.group));
+  tablesArr.forEach(t => { if (t.active) r.push(t.group); });
+  return r;
+}
+function findType(obj){
+  let o = obj;
+  while (o){ if (o.userData && o.userData.type) return o; o = o.parent; }
+  return null;
+}
+
+renderer.domElement.addEventListener('pointerdown', e => { downX = e.clientX; downY = e.clientY; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 10) return;  // 视为拖拽转视角
+  handleTap(e.clientX, e.clientY);
+});
+
+// 桌面端悬停指针
+let hoverDirty = false;
+renderer.domElement.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  ndc.set(e.clientX/innerWidth*2 - 1, -(e.clientY/innerHeight)*2 + 1);
+  hoverDirty = true;
+});
+
+function handleTap(cx, cy){
+  ndc.set(cx/innerWidth*2 - 1, -(cy/innerHeight)*2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(getRoots(), true);
+  if (!hits.length) return;
+  const hit = hits[0];
+  const owner = findType(hit.object);
+  if (!owner) return;
+  const ud = owner.userData;
+
+  if (ud.type === 'floor'){
+    const p = hit.point.clone();
+    p.x = THREE.MathUtils.clamp(p.x, -11.5, 12); p.y = 0;
+    p.z = THREE.MathUtils.clamp(p.z, -7.6, 8);
+    clerk.target = p; clerk.action = null;
+    ring.position.set(p.x, 0.02, p.z);
+    ring.visible = true; ringT = 0.5;
+  }
+  else if (ud.type === 'fridge'){
+    clerk.target = fridgeStand.clone(); clerk.action = null;
+    openBuy();
+  }
+  else if (ud.type === 'station'){
+    const st = stations[ud.index];
+    if (st.state === 'done'){
+      if (tray.length >= TRAY_MAX){ toast('🍽️ 托盘已满（最多3份），先送餐吧！'); sfx('bad'); return; }
+      clerk.target = st.stand.clone();
+      clerk.action = { type:'collect', st };
+    }
+    else if (st.state === 'cooking'){
+      toast(`⏳ 正在制作 ${RECIPES[st.key].name}…`);
+    }
+    else {
+      clerk.target = st.stand.clone(); clerk.action = null;
+      openRecipe(st);
+    }
+  }
+  else if (ud.type === 'table'){
+    const tb = tablesArr[ud.index];
+    const c = tb.customer;
+    if (c && c.state === 'wait'){
+      if (tray.includes(c.order)){
+        clerk.target = tb.stand.clone();
+        clerk.action = { type:'deliver', table:tb };
+      } else {
+        const r = RECIPES[c.order];
+        toast(`这位顾客想要 ${r.icon} ${r.name}，托盘里没有哦`);
+        sfx('bad');
+      }
+    }
+    else if (c && c.state === 'eat'){ toast('😋 顾客正在用餐…'); }
+    else { clerk.target = tb.stand.clone(); clerk.action = null; }
+  }
+}
+
+// 店员到位后执行的动作
+function doAction(a){
+  if (a.type === 'collect'){
+    const st = a.st;
+    if (st.state === 'done' && tray.length < TRAY_MAX){
+      tray.push(st.key);
+      if (st.food){ st.group.remove(st.food); st.food = null; }
+      st.state = 'idle'; st.key = null;
+      setStationColor(st, 0x90A4AE);
+      refreshTray();
+      toast('✅ 已取餐，点击顾客餐桌上菜！');
+      sfx('pop');
+    }
+  }
+  else if (a.type === 'deliver'){
+    const c = a.table.customer;
+    if (c && c.state === 'wait'){
+      const i = tray.indexOf(c.order);
+      if (i >= 0){
+        tray.splice(i, 1);
+        refreshTray();
+        c.state = 'eat'; c.eatT = 3;
+        c.bubble.visible = false; c.bar.visible = false;
+        toast('🍽️ 上菜成功！');
+        sfx('pop');
+      }
+    } else {
+      toast('😅 顾客已经离开了…');
+    }
+  }
+}
+
+/* ==================== 弹窗面板 ==================== */
+const modal = document.getElementById('modal');
+let pendingStation = null;
+
+function showModal(html){ modal.innerHTML = `<div class="card">${html}</div>`; modal.classList.add('show'); }
+function closeModal(){ modal.classList.remove('show'); }
+
+function openBuy(){
+  const unlockedRows = Object.entries(RECIPES)
+    .filter(([k, r]) => r.unlock <= state.level)
+    .map(([k, r]) => `
+      <div class="row">
+        <div>${r.icon} ${r.name}食材<br><small>¥${r.cost}/份 ｜ 库存 ${state.stock[k]}</small></div>
+        <div><button class="btn sm" data-buy="${k}" data-n="1">+1</button><button class="btn sm" data-buy="${k}" data-n="5">+5</button></div>
+      </div>`).join('');
+  const lockedRows = Object.values(RECIPES)
+    .filter(r => r.unlock > state.level)
+    .map(r => `<div class="row lock">🔒 ${r.icon} ${r.name} <small>Lv.${r.unlock} 解锁</small></div>`).join('');
+  showModal(`<h2>🛒 食材进货</h2><div class="money">💰 余额 ¥${state.money}</div>${unlockedRows}${lockedRows}<button class="btn ghost" data-close>关闭</button>`);
+}
+
+function openUpgrade(){
+  const tc = 80 + (state.tables - 4) * 60;
+  const kc = 100 * state.kitchen;
+  showModal(`
+    <h2>⬆️ 店铺升级</h2>
+    <div class="money">💰 余额 ¥${state.money}</div>
+    <div class="row">
+      <div>🪑 餐桌扩建<br><small>当前 ${state.tables}/8 张，更多餐桌=更多顾客</small></div>
+      ${state.tables >= 8 ? '<span class="max">已满</span>' : `<button class="btn sm" data-upg="table">¥${tc}</button>`}
+    </div>
+    <div class="row">
+      <div>🍳 厨房升级<br><small>Lv.${state.kitchen}/5，烹饪速度 +${(state.kitchen-1)*12}%</small></div>
+      ${state.kitchen >= 5 ? '<span class="max">满级</span>' : `<button class="btn sm" data-upg="kitchen">¥${kc}</button>`}
+    </div>
+    <button class="btn ghost" data-close>关闭</button>`);
+}
+
+function openRecipe(st){
+  pendingStation = st;
+  const rows = Object.entries(RECIPES)
+    .filter(([k, r]) => r.unlock <= state.level)
+    .map(([k, r]) => {
+      const no = state.stock[k] <= 0;
+      return `
+      <div class="row">
+        <div>${r.icon} ${r.name} <small>约 ${cookDur(r).toFixed(1)}s</small><br><small>库存 ${state.stock[k]} ｜ 售价 ¥${r.price}</small></div>
+        <button class="btn sm" data-cook="${k}" ${no ? 'disabled' : ''}>${no ? '缺食材' : '制作'}</button>
+      </div>`;
+    }).join('');
+  showModal(`<h2>🍳 选择要制作的食物</h2>${rows}<button class="btn ghost" data-close>取消</button>`);
+}
+
+function openHelp(){
+  showModal(`
+    <h2>🍗 肯德基大亨 · 玩法</h2>
+    <ol class="help">
+      <li>🛒 点击左侧<b>冰箱</b>购买食材（花钱）</li>
+      <li>🍳 点击厨房<b>灶台</b>选择食物开始制作</li>
+      <li>✅ 灶台变绿后<b>点击取餐</b>（托盘最多 ${TRAY_MAX} 份）</li>
+      <li>🪑 点击<b>顾客的餐桌</b>送餐赚钱</li>
+      <li>⏱️ 留意顾客头顶<b>耐心条</b>，耗尽会生气离开</li>
+      <li>🎚️ 赚钱升级解锁新食谱：🍔Lv1 🍟Lv2 🥤Lv3 🍕Lv5</li>
+      <li>🏠 花钱可扩建餐桌、升级厨房加速烹饪</li>
+    </ol>
+    <button class="btn" data-close>开始营业！</button>
+    <button class="btn ghost" data-reset>重置存档</button>`);
+}
+
+modal.addEventListener('click', e => {
+  if (e.target === modal){ closeModal(); return; }
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.hasAttribute('data-close')){ closeModal(); return; }
+  if (b.hasAttribute('data-reset')){
+    localStorage.removeItem(SAVE_KEY);
+    location.reload();
+    return;
+  }
+  if (b.dataset.buy){
+    const k = b.dataset.buy, n = +b.dataset.n;
+    const cost = RECIPES[k].cost * n;
+    if (state.money < cost){ toast('💸 余额不足！'); sfx('bad'); return; }
+    state.money -= cost;
+    state.stock[k] += n;
+    sfx('pop');
+    updateHUD(); openBuy(); save();
+  }
+  else if (b.dataset.upg){
+    if (b.dataset.upg === 'table'){
+      const cost = 80 + (state.tables - 4) * 60;
+      if (state.tables >= 8) return;
+      if (state.money < cost){ toast('💸 余额不足！'); sfx('bad'); return; }
+      state.money -= cost; state.tables++;
+      applyTables();
+      toast(`🪑 新增一张餐桌！现有 ${state.tables} 张`);
+    } else {
+      const cost = 100 * state.kitchen;
+      if (state.kitchen >= 5) return;
+      if (state.money < cost){ toast('💸 余额不足！'); sfx('bad'); return; }
+      state.money -= cost; state.kitchen++;
+      toast(`🍳 厨房升到 Lv.${state.kitchen}，烹饪更快了！`);
+    }
+    sfx('coin');
+    updateHUD(); openUpgrade(); save();
+  }
+  else if (b.dataset.cook){
+    const k = b.dataset.cook;
+    const st = pendingStation;
+    closeModal();
+    if (!st || st.state !== 'idle') return;
+    if (state.stock[k] <= 0){ toast('🥺 食材不足，先去冰箱进货吧'); sfx('bad'); return; }
+    state.stock[k]--;
+    st.state = 'cooking'; st.key = k; st.t = 0;
+    st.dur = cookDur(RECIPES[k]);
+    st.bar.visible = true; st.bar.userData.set(0.0001, 0.33);
+    setStationColor(st, 0xFF9800, true);
+    toast(`🍳 开始制作 ${RECIPES[k].icon} ${RECIPES[k].name}…`);
+    sfx('pop');
+    updateHUD(); save();
+  }
+});
+
+document.getElementById('buyBtn').addEventListener('click', openBuy);
+document.getElementById('upgBtn').addEventListener('click', openUpgrade);
+document.getElementById('helpBtn').addEventListener('click', openHelp);
+document.getElementById('soundBtn').addEventListener('click', function(){
+  state.muted = !state.muted;
+  this.textContent = state.muted ? '🔇' : '🔊';
+  save();
+});
+
+// 托盘点击丢弃
+document.getElementById('tray').addEventListener('click', e => {
+  const b = e.target.closest('.tchip');
+  if (!b) return;
+  tray.splice(+b.dataset.ti, 1);
+  refreshTray();
+  toast('🗑️ 已丢弃');
+});
+function renderTrayChips(){
+  const el = document.getElementById('tray');
+  el.innerHTML = tray.length
+    ? tray.map((k, i) => `<button class="tchip" data-ti="${i}">${RECIPES[k].icon}</button>`).join('')
+    : '<span class="empty">空</span>';
+}
+
+/* ==================== HUD / 存档 ==================== */
+function updateHUD(){
+  document.getElementById('money').textContent = state.money;
+  document.getElementById('lvl').textContent = state.level;
+  document.getElementById('xpfill').style.width = Math.min(100, state.xp / xpNeed(state.level) * 100) + '%';
+}
+function save(){
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch(e){}
+}
+function load(){
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (s && typeof s === 'object'){ Object.assign(state, s); hasSave = true; }
+  } catch(e){}
+}
+
+/* ==================== 主循环 ==================== */
+const popups = [];
+let spawnT = 2;             // 首位顾客很快到来
+let last = performance.now();
+
+function animate(now){
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const tNow = now / 1000;
+
+  controls.update();
+  controls.target.x = THREE.MathUtils.clamp(controls.target.x, -10, 10);
+  controls.target.z = THREE.MathUtils.clamp(controls.target.z, -7, 8);
+  controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0, 3);
+
+  // 面向相机的条
+  billboards.forEach(b => b.quaternion.copy(camera.quaternion));
+
+  // 店员移动
+  if (clerk.target){
+    clerk.moving = true;
+    if (stepMove(clerk.p.group, clerk.target, 4.6, dt)){
+      clerk.target = null;
+      clerk.moving = false;
+      if (clerk.action){ const a = clerk.action; clerk.action = null; doAction(a); }
+    }
+  }
+  clerk.p.animate(tNow, clerk.moving);
+
+  // 灶台烹饪
+  stations.forEach(st => {
+    if (st.state === 'cooking'){
+      st.t += dt;
+      st.bar.userData.set(st.t / st.dur, 0.33);
+      if (st.t >= st.dur){
+        st.state = 'done';
+        st.bar.visible = false;
+        setStationColor(st, 0x4CAF50, true);
+        st.food = makeFood(st.key);
+        st.food.position.set(0.35, 1.0, 0);
+        st.group.add(st.food);
+        toast(`${RECIPES[st.key].icon} ${RECIPES[st.key].name} 做好了，点击灶台取餐！`);
+        sfx('ding');
+      }
+    }
+  });
+
+  // 顾客
+  for (let i = customers.length - 1; i >= 0; i--) updateCustomer(customers[i], dt, tNow);
+
+  // 顾客生成
+  spawnT -= dt;
+  if (spawnT <= 0){
+    spawnCustomer();
+    spawnT = Math.max(4, 10 - state.level * 0.6) * (0.8 + Math.random() * 0.4);
+  }
+
+  // 飘字
+  for (let i = popups.length - 1; i >= 0; i--){
+    const p = popups[i];
+    p.life -= dt;
+    p.sprite.position.y += dt * 1.1;
+    p.sprite.material.opacity = Math.max(0, p.life / 1.3);
+    if (p.life <= 0){ scene.remove(p.sprite); popups.splice(i, 1); }
+  }
+
+  // 点击圈动画
+  if (ring.visible){
+    ringT -= dt;
+    const k = 1 - ringT / 0.5;
+    ring.scale.setScalar(1 + k * 1.2);
+    ring.material.opacity = Math.max(0, ringT / 0.5);
+    if (ringT <= 0) ring.visible = false;
+  }
+
+  // 悬停指针（仅桌面）
+  if (hoverDirty){
+    hoverDirty = false;
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(getRoots(), true);
+    document.body.style.cursor = hits.length ? 'pointer' : 'default';
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* ==================== 初始化 ==================== */
+load();
+applyTables();
+updateHUD();
+refreshTray();
+document.getElementById('soundBtn').textContent = state.muted ? '🔇' : '🔊';
+
+if (!hasSave){
+  state.stock.burger = 2;   // 新手礼包
+  updateHUD();
+  openHelp();
+} else {
+  toast('👋 欢迎回来，继续营业吧！', 2200);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+setInterval(save, 5000);
+document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+
+window.__gameOK = true;
+document.getElementById('loadFail').style.display = 'none';
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
